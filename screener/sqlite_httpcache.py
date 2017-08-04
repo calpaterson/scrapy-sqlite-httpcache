@@ -19,7 +19,15 @@ CREATE TABLE httpcache (
 """
 
 DML = """
-INSERT INTO httpcache VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO httpcache (
+    request_fingerprint,
+    spider,
+    status,
+    url,
+    headers,
+    body
+)
+VALUES (?, ?, ?, ?, ?, ?);
 """
 
 DQL = """
@@ -56,10 +64,13 @@ class SqliteCacheStorage(object):
         ))
 
     def retrieve_response(self, spider, request):
-        status, url, headers_json, body = (
-            self.conn.execute(DQL, (request_fingerprint(request), spider.name))
-            .fetchone()
-        )
+        try:
+            status, url, headers_json, body = (
+                self.conn.execute(DQL, (request_fingerprint(request), spider.name))
+                .fetchone()
+            )
+        except TypeError:
+            return None
         headers = json.loads(headers_json)
         respcls = responsetypes.from_args(headers=headers, url=url)
         return respcls(url=url, headers=headers, status=status, body=body)
