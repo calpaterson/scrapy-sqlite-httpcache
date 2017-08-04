@@ -2,6 +2,7 @@ from os import path
 from contextlib import closing
 import sqlite3
 import json
+from datetime import date, datetime, timedelta
 
 from scrapy.utils.request import request_fingerprint
 from scrapy.responsetypes import responsetypes
@@ -14,6 +15,7 @@ CREATE TABLE httpcache (
     url TEXT NOT NULL,
     headers BLOB NOT NULL,
     body BLOB NOT NULL,
+    seen DATE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (request_fingerprint, spider)
 );
 """
@@ -33,7 +35,7 @@ VALUES (?, ?, ?, ?, ?, ?);
 DQL = """
 SELECT status, url, headers, body
 FROM httpcache
-WHERE request_fingerprint = ? AND spider = ?
+WHERE request_fingerprint = ? AND spider = ? AND seen > ?
 """
 
 class SqliteCacheStorage(object):
@@ -42,6 +44,7 @@ class SqliteCacheStorage(object):
             settings["HTTPCACHE_DIR"],
             "httpcache.sqlite3"
         )
+        self.expiration_secs = settings["HTTPCACHE_EXPIRATION_SECS"]
 
     def open_spider(self, spider):
         if not path.exists(self.path):
@@ -65,8 +68,17 @@ class SqliteCacheStorage(object):
 
     def retrieve_response(self, spider, request):
         try:
+            if self.expiration_secs == 0:
+                seen_threshold = date(1970, 1, 1)
+            else:
+                seen_threshold = datetime.utcnow() - \
+                                 timedelta(seconds=self.expiration_secs)
             status, url, headers_json, body = (
-                self.conn.execute(DQL, (request_fingerprint(request), spider.name))
+                self.conn.execute(DQL, (
+                    request_fingerprint(request),
+                    spider.name,
+                    seen_threshold
+                ))
                 .fetchone()
             )
         except TypeError:
