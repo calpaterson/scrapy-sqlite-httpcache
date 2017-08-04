@@ -62,7 +62,7 @@ class SqliteCacheStorage(object):
             spider.name,
             response.status,
             response.url,
-            json.dumps(response.headers, 4),
+            json.dumps(response.headers),
             response.body
         ))
 
