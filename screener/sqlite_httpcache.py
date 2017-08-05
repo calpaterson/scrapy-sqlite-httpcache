@@ -1,8 +1,9 @@
 from os import path
 from contextlib import closing
 import sqlite3
-import json
+import pickle
 from datetime import date, datetime, timedelta
+from logging import getLogger
 
 from scrapy.utils.request import request_fingerprint
 from scrapy.responsetypes import responsetypes
@@ -20,14 +21,27 @@ CREATE TABLE httpcache (
 );
 """
 
-DML = """
-INSERT OR REPLACE INTO httpcache (
-    request_fingerprint,
+UPDATE = """
+UPDATE httpcache
+SET
+    spider = ?,
+    status = ?,
+    url = ?,
+    headers = ?,
+    body = ?,
+    seen = CURRENT_TIMESTAMP
+WHERE
+    request_fingerprint = ?;
+"""
+
+INSERT = """
+INSERT INTO httpcache (
     spider,
     status,
     url,
     headers,
-    body
+    body,
+    request_fingerprint
 )
 VALUES (?, ?, ?, ?, ?, ?);
 """
@@ -40,6 +54,7 @@ WHERE request_fingerprint = ? AND spider = ? AND seen > ?
 
 class SqliteCacheStorage(object):
     def __init__(self, settings):
+        self.logger = getLogger(__name__)
         self.path = path.join(
             settings["HTTPCACHE_DIR"],
             "httpcache.sqlite3"
@@ -48,41 +63,53 @@ class SqliteCacheStorage(object):
 
     def open_spider(self, spider):
         if not path.exists(self.path):
+            self.logger.info("creating httpcache.sqlite3")
             self.conn = sqlite3.connect(self.path)
             self.conn.execute(SCHEMA)
         else:
             self.conn = sqlite3.connect(self.path)
 
     def close_spider(self, spider):
+        self.logger.info("committing")
         self.conn.commit()
 
     def store_response(self, spider, request, response):
-        self.conn.execute(DML, (
-            request_fingerprint(request),
+        fingerprint = request_fingerprint(request)
+        tup = (
             spider.name,
             response.status,
             response.url,
-            json.dumps(response.headers),
-            response.body
-        ))
+            pickle.dumps(response.headers, 4),
+            response.body,
+            fingerprint,
+        )
+        modified = self.conn.execute(UPDATE, tup).rowcount
+        if modified == 0:
+            self.conn.execute(INSERT, tup)
+            self.logger.info("inserted: (%s) %s", fingerprint, request.url)
+        else:
+            self.logger.info("updated: (%s) %s", fingerprint, request.url)
 
     def retrieve_response(self, spider, request):
+        if self.expiration_secs == 0:
+            seen_threshold = date(1970, 1, 1)
+        else:
+            seen_threshold = datetime.utcnow() - \
+                             timedelta(seconds=self.expiration_secs)
         try:
-            if self.expiration_secs == 0:
-                seen_threshold = date(1970, 1, 1)
-            else:
-                seen_threshold = datetime.utcnow() - \
-                                 timedelta(seconds=self.expiration_secs)
-            status, url, headers_json, body = (
+            fingerprint = request_fingerprint(request)
+            status, url, headers_pickle, body = (
                 self.conn.execute(DQL, (
-                    request_fingerprint(request),
+                    fingerprint,
                     spider.name,
                     seen_threshold
                 ))
                 .fetchone()
             )
+            self.logger.info("found: (%s) %s", fingerprint, request.url)
         except TypeError:
+            self.logger.info("did not find: (%s) %s", fingerprint, request.url)
             return None
-        headers = json.loads(headers_json)
+        headers = pickle.loads(headers_pickle)
         respcls = responsetypes.from_args(headers=headers, url=url)
         return respcls(url=url, headers=headers, status=status, body=body)
