@@ -9,7 +9,7 @@ from scrapy.utils.request import request_fingerprint
 from scrapy.responsetypes import responsetypes
 
 SCHEMA = """
-CREATE TABLE httpcache (
+CREATE TABLE IF NOT EXISTS httpcache (
     request_fingerprint TEXT NOT NULL,
     spider TEXT NOT NULL,
     status INT NOT NULL,
@@ -57,17 +57,13 @@ class SqliteCacheStorage(object):
         self.logger = getLogger(__name__)
         self.path = path.join(
             settings["HTTPCACHE_DIR"],
-            "httpcache.sqlite3"
+            settings.get("HTTPCACHE_SQLITE_FILENAME", "httpcache.sqlite3")
         )
         self.expiration_secs = settings["HTTPCACHE_EXPIRATION_SECS"]
 
     def open_spider(self, spider):
-        if not path.exists(self.path):
-            self.logger.info("creating httpcache.sqlite3")
-            self.conn = sqlite3.connect(self.path)
-            self.conn.execute(SCHEMA)
-        else:
-            self.conn = sqlite3.connect(self.path)
+        self.conn = sqlite3.connect(self.path)
+        self.conn.execute(SCHEMA)
 
     def close_spider(self, spider):
         self.logger.info("committing")
@@ -86,9 +82,9 @@ class SqliteCacheStorage(object):
         modified = self.conn.execute(UPDATE, tup).rowcount
         if modified == 0:
             self.conn.execute(INSERT, tup)
-            self.logger.info("inserted: (%s) %s", fingerprint, request.url)
+            self.logger.debug("inserted: (%s) %s", fingerprint, request.url)
         else:
-            self.logger.info("updated: (%s) %s", fingerprint, request.url)
+            self.logger.debug("updated: (%s) %s", fingerprint, request.url)
 
     def retrieve_response(self, spider, request):
         if self.expiration_secs == 0:
@@ -106,9 +102,9 @@ class SqliteCacheStorage(object):
                 ))
                 .fetchone()
             )
-            self.logger.info("found: (%s) %s", fingerprint, request.url)
+            self.logger.debug("found: (%s) %s", fingerprint, request.url)
         except TypeError:
-            self.logger.info("did not find: (%s) %s", fingerprint, request.url)
+            self.logger.debug("did not find: (%s) %s", fingerprint, request.url)
             return None
         headers = pickle.loads(headers_pickle)
         respcls = responsetypes.from_args(headers=headers, url=url)
