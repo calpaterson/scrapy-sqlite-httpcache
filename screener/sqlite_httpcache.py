@@ -1,10 +1,11 @@
 from os import path
-from contextlib import closing
+from contextlib import closing, ExitStack
 import sqlite3
 import pickle
 from datetime import date, datetime, timedelta
 from logging import getLogger
 
+from scrapy.utils.misc import load_object
 from scrapy.utils.request import request_fingerprint
 from scrapy.responsetypes import responsetypes
 
@@ -60,31 +61,40 @@ class SqliteCacheStorage(object):
             settings.get("HTTPCACHE_SQLITE_FILENAME", "httpcache.sqlite3")
         )
         self.expiration_secs = settings["HTTPCACHE_EXPIRATION_SECS"]
+        lock = settings.get("HTTPCACHE_SQLITE_WRITE_LOCK", None)
+        if lock is not None:
+            self.write_lock = load_object(lock)
+        else:
+            # ExitStack functions as a null context manager
+            self.write_lock = ExitStack()
 
     def open_spider(self, spider):
         self.conn = sqlite3.connect(self.path)
-        self.conn.execute(SCHEMA)
+        with self.write_lock:
+            self.conn.execute(SCHEMA)
+            self.conn.commit()
 
     def close_spider(self, spider):
-        self.logger.info("committing")
-        self.conn.commit()
+        self.logger.info("closing")
 
     def store_response(self, spider, request, response):
-        fingerprint = request_fingerprint(request)
-        tup = (
-            spider.name,
-            response.status,
-            response.url,
-            pickle.dumps(response.headers, 4),
-            response.body,
-            fingerprint,
-        )
-        modified = self.conn.execute(UPDATE, tup).rowcount
-        if modified == 0:
-            self.conn.execute(INSERT, tup)
-            self.logger.debug("inserted: (%s) %s", fingerprint, request.url)
-        else:
-            self.logger.debug("updated: (%s) %s", fingerprint, request.url)
+        with self.write_lock:
+            fingerprint = request_fingerprint(request)
+            tup = (
+                spider.name,
+                response.status,
+                response.url,
+                pickle.dumps(response.headers, 4),
+                response.body,
+                fingerprint,
+            )
+            modified = self.conn.execute(UPDATE, tup).rowcount
+            if modified == 0:
+                self.conn.execute(INSERT, tup)
+                self.logger.debug("inserted: (%s) %s", fingerprint, request.url)
+            else:
+                self.logger.debug("updated: (%s) %s", fingerprint, request.url)
+            self.conn.commit()
 
     def retrieve_response(self, spider, request):
         if self.expiration_secs == 0:
