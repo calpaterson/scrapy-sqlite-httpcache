@@ -1,5 +1,5 @@
 from os import path
-from contextlib import closing, ExitStack
+from contextlib import ExitStack
 import sqlite3
 import pickle
 from datetime import date, datetime, timedelta
