@@ -1,4 +1,5 @@
 from os import path
+import json
 from contextlib import ExitStack
 import sqlite3
 import pickle
@@ -8,6 +9,7 @@ from logging import getLogger
 from scrapy.utils.misc import load_object
 from scrapy.utils.request import request_fingerprint
 from scrapy.responsetypes import responsetypes
+from scrapy.http.headers import Headers
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS httpcache (
@@ -52,6 +54,12 @@ SELECT status, url, headers, body
 FROM httpcache
 WHERE request_fingerprint = ? AND spider = ? AND seen > ?
 """
+
+def dumps_headers(headers):
+    return "{}"
+
+def loads_headers(json_str):
+    return Headers()
 
 class SqliteCacheStorage(object):
     def __init__(self, settings):
