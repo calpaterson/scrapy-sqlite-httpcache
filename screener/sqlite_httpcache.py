@@ -2,7 +2,6 @@ from os import path
 import json
 from contextlib import ExitStack
 import sqlite3
-import pickle
 from datetime import date, datetime, timedelta
 from logging import getLogger
 
@@ -56,10 +55,27 @@ WHERE request_fingerprint = ? AND spider = ? AND seen > ?
 """
 
 def dumps_headers(headers):
-    return "{}"
+    rep = {}
+    for key, value in headers.iteritems():
+        if isinstance(value, list):
+            rep[key.decode(headers.encoding)] = [
+                v.decode(headers.encoding) for v in value]
+        else:
+            rep[key.decode(headers.encoding)] = value.decode(headers.encoding)
+    return json.dumps({"encoding": headers.encoding, "rep": rep})
 
 def loads_headers(json_str):
-    return Headers()
+    d = json.loads(json_str)
+    encoding = d["encoding"]
+    headers = Headers(encoding=encoding)
+    for key, value in d["rep"].items():
+        if isinstance(value, list):
+            headers[key.encode(encoding)] = [v.encode(encoding) for v in value]
+        else:
+            headers[key.encode(encoding)] = value.encode(encoding)
+    return headers
+
+
 
 class SqliteCacheStorage(object):
     def __init__(self, settings):
@@ -92,7 +108,7 @@ class SqliteCacheStorage(object):
                 spider.name,
                 response.status,
                 response.url,
-                pickle.dumps(response.headers, 4),
+                dumps_headers(response.headers),
                 response.body,
                 fingerprint,
             )
@@ -112,7 +128,7 @@ class SqliteCacheStorage(object):
                              timedelta(seconds=self.expiration_secs)
         try:
             fingerprint = request_fingerprint(request)
-            status, url, headers_pickle, body = (
+            status, url, headers_json, body = (
                 self.conn.execute(DQL, (
                     fingerprint,
                     spider.name,
@@ -124,6 +140,6 @@ class SqliteCacheStorage(object):
         except TypeError:
             self.logger.debug("did not find: (%s) %s", fingerprint, request.url)
             return None
-        headers = pickle.loads(headers_pickle)
+        headers = loads_headers(headers_json)
         respcls = responsetypes.from_args(headers=headers, url=url)
         return respcls(url=url, headers=headers, status=status, body=body)
