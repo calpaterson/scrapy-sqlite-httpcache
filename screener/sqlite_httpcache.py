@@ -10,50 +10,6 @@ from scrapy.utils.request import request_fingerprint
 from scrapy.responsetypes import responsetypes
 from scrapy.http.headers import Headers
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS httpcache (
-    request_fingerprint TEXT NOT NULL,
-    spider TEXT NOT NULL,
-    status INT NOT NULL,
-    url TEXT NOT NULL,
-    headers BLOB NOT NULL,
-    body BLOB NOT NULL,
-    seen DATE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (request_fingerprint, spider)
-);
-"""
-
-UPDATE = """
-UPDATE httpcache
-SET
-    spider = ?,
-    status = ?,
-    url = ?,
-    headers = ?,
-    body = ?,
-    seen = CURRENT_TIMESTAMP
-WHERE
-    request_fingerprint = ?;
-"""
-
-INSERT = """
-INSERT INTO httpcache (
-    spider,
-    status,
-    url,
-    headers,
-    body,
-    request_fingerprint
-)
-VALUES (?, ?, ?, ?, ?, ?);
-"""
-
-DQL = """
-SELECT status, url, headers, body
-FROM httpcache
-WHERE request_fingerprint = ? AND spider = ? AND seen > ?
-"""
-
 def dumps_headers(headers):
     rep = {}
     for key, value in headers.iteritems():
@@ -76,7 +32,6 @@ def loads_headers(json_str):
     return headers
 
 
-
 class SqliteCacheStorage(object):
     def __init__(self, settings):
         self.logger = getLogger(__name__)
@@ -92,10 +47,58 @@ class SqliteCacheStorage(object):
             # ExitStack functions as a null context manager
             self.write_lock = ExitStack()
 
+        self.schema = """
+        CREATE TABLE IF NOT EXISTS httpcache (
+            request_fingerprint TEXT NOT NULL,
+            spider TEXT NOT NULL,
+            status INT NOT NULL,
+            url TEXT NOT NULL,
+            headers BLOB NOT NULL,
+            body BLOB NOT NULL,
+            seen DATE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (request_fingerprint, spider)
+        );
+        """
+
+        self.seen_index = """
+        CREATE INDEX IF NOT EXISTS httpcache_ix_seen on httpcache (seen);
+        """
+
+        self.update = """
+        UPDATE httpcache
+        SET
+            status = ?,
+            url = ?,
+            headers = ?,
+            body = ?,
+            seen = CURRENT_TIMESTAMP
+        WHERE
+            request_fingerprint = ? AND spider = ?;
+        """
+
+        self.insert = """
+        INSERT INTO httpcache (
+            status,
+            url,
+            headers,
+            body,
+            request_fingerprint,
+            spider
+        )
+        VALUES (?, ?, ?, ?, ?, ?);
+        """
+
+        self.query = """
+        SELECT status, url, headers, body
+        FROM httpcache
+        WHERE request_fingerprint = ? AND spider = ? AND seen > ?
+        """
+
     def open_spider(self, spider):
         self.conn = sqlite3.connect(self.path)
         with self.write_lock:
-            self.conn.execute(SCHEMA)
+            self.conn.execute(self.schema)
+            self.conn.execute(self.seen_index)
             self.conn.commit()
 
     def close_spider(self, spider):
@@ -105,16 +108,16 @@ class SqliteCacheStorage(object):
         with self.write_lock:
             fingerprint = request_fingerprint(request)
             tup = (
-                spider.name,
                 response.status,
                 response.url,
                 dumps_headers(response.headers),
                 response.body,
                 fingerprint,
+                spider.name,
             )
-            modified = self.conn.execute(UPDATE, tup).rowcount
+            modified = self.conn.execute(self.update, tup).rowcount
             if modified == 0:
-                self.conn.execute(INSERT, tup)
+                self.conn.execute(self.insert, tup)
                 self.logger.debug("inserted: (%s) %s", fingerprint, request.url)
             else:
                 self.logger.debug("updated: (%s) %s", fingerprint, request.url)
@@ -129,7 +132,7 @@ class SqliteCacheStorage(object):
         try:
             fingerprint = request_fingerprint(request)
             status, url, headers_json, body = (
-                self.conn.execute(DQL, (
+                self.conn.execute(self.query, (
                     fingerprint,
                     spider.name,
                     seen_threshold
