@@ -30,7 +30,7 @@ class MetaControlledCachePolicy(object):
             is_fresh = elapsed <= max_expiration_secs
             logger.debug(
                 "cache response %s (elapsed: %d, allowed: %d): %s",
-                "stale",
+                "fresh enough" if is_fresh else "stale",
                 elapsed,
                 max_expiration_secs,
                 response.url)
