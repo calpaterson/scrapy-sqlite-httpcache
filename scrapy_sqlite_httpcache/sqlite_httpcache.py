@@ -43,6 +43,7 @@ class SQLiteCacheStorage(object):
         self.logger.info("SQLite cache database path: %s", self.path.resolve())
 
         self.expiration_secs = settings["HTTPCACHE_EXPIRATION_SECS"]
+
         lock = settings.get("HTTPCACHE_SQLITE_WRITE_LOCK", None)
         if lock is not None:
             self.write_lock = load_object(lock)
@@ -52,11 +53,11 @@ class SQLiteCacheStorage(object):
 
         self.schema = """
         CREATE TABLE IF NOT EXISTS httpcache (
-            request_fingerprint TEXT NOT NULL,
+            request_fingerprint BLOB NOT NULL,
             spider TEXT NOT NULL,
             status INT NOT NULL,
             url TEXT NOT NULL,
-            headers BLOB NOT NULL,
+            headers TEXT NOT NULL,
             body BLOB NOT NULL,
             seen DATE NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (request_fingerprint, spider)
@@ -104,12 +105,14 @@ class SQLiteCacheStorage(object):
             self.conn.execute(self.seen_index)
             self.conn.commit()
 
+        self.request_fingerprinter = spider.crawler.request_fingerprinter
+
     def close_spider(self, spider):
         pass
 
     def store_response(self, spider, request, response):
         with self.write_lock:
-            fingerprint = request_fingerprint(request)
+            fingerprint = self.request_fingerprinter.fingerprint(request)
             tup = (
                 response.status,
                 response.url,
@@ -121,9 +124,9 @@ class SQLiteCacheStorage(object):
             modified = self.conn.execute(self.update, tup).rowcount
             if modified == 0:
                 self.conn.execute(self.insert, tup)
-                self.logger.debug("inserted: (%s) %s", fingerprint, request.url)
+                self.logger.debug("inserted: (%s) %s", fingerprint.hex(), request.url)
             else:
-                self.logger.debug("updated: (%s) %s", fingerprint, request.url)
+                self.logger.debug("updated: (%s) %s", fingerprint.hex(), request.url)
             self.conn.commit()
 
     def retrieve_response(self, spider, request):
@@ -133,7 +136,7 @@ class SQLiteCacheStorage(object):
             seen_threshold = datetime.utcnow() - \
                              timedelta(seconds=self.expiration_secs)
         try:
-            fingerprint = request_fingerprint(request)
+            fingerprint = self.request_fingerprinter.fingerprint(request)
             status, url, headers_json, body = (
                 self.conn.execute(self.query, (
                     fingerprint,
@@ -142,9 +145,9 @@ class SQLiteCacheStorage(object):
                 ))
                 .fetchone()
             )
-            self.logger.debug("hit: (%s) %s", fingerprint, request.url)
+            self.logger.debug("hit: (%s) %s", fingerprint.hex(), request.url)
         except TypeError:
-            self.logger.debug("miss: (%s) %s", fingerprint, request.url)
+            self.logger.debug("miss: (%s) %s", fingerprint.hex(), request.url)
             return None
         headers = loads_headers(headers_json)
         respcls = responsetypes.from_args(headers=headers, url=url)
