@@ -1,4 +1,4 @@
-from os import path
+from pathlib import Path
 import json
 from contextlib import ExitStack
 import sqlite3
@@ -12,7 +12,7 @@ from scrapy.http.headers import Headers
 
 def dumps_headers(headers):
     rep = {}
-    for key, value in headers.iteritems():
+    for key, value in headers.items():
         if isinstance(value, list):
             rep[key.decode(headers.encoding)] = [
                 v.decode(headers.encoding) for v in value]
@@ -32,13 +32,16 @@ def loads_headers(json_str):
     return headers
 
 
-class SqliteCacheStorage(object):
+class SQLiteCacheStorage(object):
     def __init__(self, settings):
         self.logger = getLogger(__name__)
-        self.path = path.join(
-            settings["HTTPCACHE_DIR"],
-            settings.get("HTTPCACHE_SQLITE_FILENAME", "httpcache.sqlite3")
-        )
+        httpcache_dir = Path(settings["HTTPCACHE_DIR"])
+        if not httpcache_dir.exists():
+            self.logger.warning("creating HTTPCACHE_DIR: '%s'", httpcache_dir)
+            httpcache_dir.mkdir()
+        self.path = httpcache_dir / settings.get("HTTPCACHE_SQLITE_FILENAME", "httpcache.sqlite3")
+        self.logger.info("SQLite cache database path: %s", self.path.resolve())
+
         self.expiration_secs = settings["HTTPCACHE_EXPIRATION_SECS"]
         lock = settings.get("HTTPCACHE_SQLITE_WRITE_LOCK", None)
         if lock is not None:
@@ -102,7 +105,7 @@ class SqliteCacheStorage(object):
             self.conn.commit()
 
     def close_spider(self, spider):
-        self.logger.info("closing")
+        pass
 
     def store_response(self, spider, request, response):
         with self.write_lock:
@@ -139,9 +142,9 @@ class SqliteCacheStorage(object):
                 ))
                 .fetchone()
             )
-            self.logger.debug("found: (%s) %s", fingerprint, request.url)
+            self.logger.debug("hit: (%s) %s", fingerprint, request.url)
         except TypeError:
-            self.logger.debug("did not find: (%s) %s", fingerprint, request.url)
+            self.logger.debug("miss: (%s) %s", fingerprint, request.url)
             return None
         headers = loads_headers(headers_json)
         respcls = responsetypes.from_args(headers=headers, url=url)
