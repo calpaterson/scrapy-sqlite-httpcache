@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scrapy-sqlite-httpcache"
+version = "0.1"
+dependencies = []
+requires-python = ">=3.8"
+authors = [
+  {name = "Cal Paterson", email = "cal@calpaterson.com"},
+]
+description = "A SQLite-based HTTP cache for scrapy "
+readme = "README.md"
+license = {file = "COPYING"}
+# keywords = ["egg", "bacon", "sausage", "tomatoes", "Lobster Thermidor"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python"
+]
+
+[project.urls]
+Homepage = "https://github.com/calpaterson/scrapy-sqlite-httpcache"
+# Documentation = "https://readthedocs.org"
+Repository = "https://github.com/calpaterson/scrapy-sqlite-httpcache"
+"Bug Tracker" = "https://github.com/calpaterson/scrapy-sqlite-httpcache/issues"
+#Changelog = "https://github.com/me/spam/blob/master/CHANGELOG.md"
