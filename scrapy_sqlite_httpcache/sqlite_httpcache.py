@@ -57,6 +57,8 @@ class SQLiteCacheStorage(object):
             spider TEXT NOT NULL,
             status INT NOT NULL,
             url TEXT NOT NULL,
+            -- headers could be JSONB but that is still quite new and only
+            -- present in releases after 2024-01-15
             headers TEXT NOT NULL,
             body BLOB NOT NULL,
             seen DATE NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -66,6 +68,11 @@ class SQLiteCacheStorage(object):
 
         self.seen_index = """
         CREATE INDEX IF NOT EXISTS httpcache_ix_seen on httpcache (seen);
+        """
+
+        # WAL mode is generally quicker
+        self.wal_mode_pragma = """
+        PRAGMA journal_mode=WAL;
         """
 
         self.update = """
@@ -101,6 +108,7 @@ class SQLiteCacheStorage(object):
     def open_spider(self, spider):
         self.conn = sqlite3.connect(self.path)
         with self.write_lock:
+            self.conn.execute(self.wal_mode_pragma)
             self.conn.execute(self.schema)
             self.conn.execute(self.seen_index)
             self.conn.commit()
