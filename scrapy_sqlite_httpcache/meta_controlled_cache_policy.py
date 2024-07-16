@@ -1,3 +1,4 @@
+from datetime import timedelta
 from logging import getLogger
 from time import time
 
@@ -17,14 +18,15 @@ class MetaControlledCachePolicy(object):
     def should_cache_response(self, response, request):
         return response.status not in self.ignore_http_codes
 
-    def is_cached_response_fresh(self, response, request):
-        max_expiration_secs = request.meta.get("max_expiration_secs", None)
-        if max_expiration_secs is None:
-            logger.debug("cache response fresh: %s", response.url)
+    def is_cached_response_fresh(self, cached_response, request):
+        expire: timedelta | None = request.meta.get("expire", None)
+        if expire is None:
+            logger.debug("no meta expire set - cache response fresh: %s", cached_response.url)
             return True
         else:
+            max_expiration_secs = expire.total_seconds()
             now = time()
-            t = rfc1123_to_epoch(response.headers.get(b"Date"))
+            t = rfc1123_to_epoch(cached_response.headers.get(b"Date"))
             elapsed = now - t
             logger.debug("elapsed: %d, allowed: %d", elapsed, max_expiration_secs)
             is_fresh = elapsed <= max_expiration_secs
@@ -33,7 +35,7 @@ class MetaControlledCachePolicy(object):
                 "fresh enough" if is_fresh else "stale",
                 elapsed,
                 max_expiration_secs,
-                response.url)
+                cached_response.url)
             return is_fresh
 
     def is_cached_response_valid(self, cachedresponse, response, request):

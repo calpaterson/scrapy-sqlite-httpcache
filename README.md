@@ -20,5 +20,26 @@ HTTPCACHE_STORAGE = "scrapy_sqlite_httpcache.SQLiteCacheStorage"
 
 ## `MetaControlledCachePolicy`
 
-This package also provides an alternate cache policy that is controlled via
-scrapy configuration.
+This package also provides an alternate cache policy that allows the cache
+validity to be set by the spider for each request.  For example:
+
+```python
+from datetime import timedelta
+import scrapy
+
+class SomeSpider(scrapy.Spider):
+    def parse(self):
+        yield scrapy.Request(
+            url="...",
+            meta={"expire": timedelta(days=3)}
+        )
+```
+
+If a request younger than the `expire` value is found in the cache, it will be
+returned.
+
+To use this policy, set:
+
+```python
+HTTPCACHE_POLICY = "scrapy_sqlite_httpcache.MetaControlledCachePolicy"
+```
