@@ -8,6 +8,8 @@ downloader middleware.
 different places.  However only two backends are provided, a filesystem one and
 a DBM one.
 
+## `SQLiteCacheStorage`
+
 This package provides an alternate SQLite backend that plugs in to the existing HttpCacheMiddleware.
 
 Put these lines in your scrapy `settings.py`:
