@@ -10,18 +10,21 @@ requires-python = ">=3.8"
 authors = [
   {name = "Cal Paterson", email = "cal@calpaterson.com"},
 ]
-description = "A SQLite-based HTTP cache for scrapy "
+description = "A SQLite-based HTTP cache for scrapy"
 readme = "README.md"
 license = {file = "COPYING"}
-# keywords = ["egg", "bacon", "sausage", "tomatoes", "Lobster Thermidor"]
 classifiers = [
   "Development Status :: 4 - Beta",
-  "Programming Language :: Python"
+  "Programming Language :: Python :: 3 :: Only",
+  "Intended Audience :: Developers",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Internet :: WWW :: Scraping",
+  "Operating System :: OS Independent",
 ]
 
 [project.urls]
 Homepage = "https://github.com/calpaterson/scrapy-sqlite-httpcache"
-# Documentation = "https://readthedocs.org"
+Documentation = "https://github.com/calpaterson/scrapy-sqlite-httpcache/blob/main/README.md"
 Repository = "https://github.com/calpaterson/scrapy-sqlite-httpcache"
 "Bug Tracker" = "https://github.com/calpaterson/scrapy-sqlite-httpcache/issues"
 #Changelog = "https://github.com/me/spam/blob/master/CHANGELOG.md"
