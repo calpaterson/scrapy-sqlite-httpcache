@@ -44,4 +44,5 @@ To use this policy, set:
 
 ```python
 HTTPCACHE_POLICY = "scrapy_sqlite_httpcache.MetaControlledCachePolicy"
+HTTPCACHE_EXPIRATION_SECS = 86400 # this becomes the default, if nothing is in meta
 ```
